@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RTSP/WEBcam AI Inference (Robust Face Detect)
+RTSP/WEBCAM AI Inference (Robust Face Detect)
 - RTSP ya webcam se connect
 - Low-light friendly preprocessing (brighten + equalize + optional CLAHE)
 - Tunable Haar-cascade params (scaleFactor/minNeighbors/minSize)
@@ -28,17 +28,25 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 # ---------- Logging ----------
 logger = logging.getLogger("rtsp_ai_inference")
 logger.setLevel(logging.INFO)
-_fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-_sh = logging.StreamHandler(sys.stdout); _sh.setFormatter(_fmt)
-_fh = logging.FileHandler(LOG_DIR / "app.log"); _fh.setFormatter(_fmt)
+_FMT = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+
+_SH = logging.StreamHandler(sys.stdout)
+_SH.setFormatter(_FMT)
+
+_FH = logging.FileHandler(LOG_DIR / "app.log")
+_FH.setFormatter(_FMT)
+
 if not logger.handlers:
-    logger.addHandler(_sh); logger.addHandler(_fh)
+    logger.addHandler(_SH)
+    logger.addHandler(_FH)
+
 
 # ---------- Video ----------
 def open_capture(src, width=None, height=None, fps=None):
     cap = cv2.VideoCapture(src)
     if not cap.isOpened():
         return None
+
     if width:
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(width))
     if height:
@@ -46,6 +54,7 @@ def open_capture(src, width=None, height=None, fps=None):
     if fps:
         cap.set(cv2.CAP_PROP_FPS, int(fps))
     return cap
+
 
 # ---------- Preprocessing ----------
 def preprocess_for_faces(frame, alpha=1.5, beta=30, use_clahe=False, equalize=True):
@@ -72,6 +81,7 @@ def preprocess_for_faces(frame, alpha=1.5, beta=30, use_clahe=False, equalize=Tr
     gray = cv2.cvtColor(frame_b, cv2.COLOR_BGR2GRAY)
     return gray, frame_b  # gray for detection, frame_b for drawing
 
+
 # ---------- Detection ----------
 def load_detectors(use_profile=False):
     base = cv2.data.haarcascades
@@ -86,10 +96,14 @@ def load_detectors(use_profile=False):
         prof_path = base + "haarcascade_profileface.xml"
         profile = cv2.CascadeClassifier(prof_path)
         if profile.empty():
-            logger.warning("Profile-face cascade not found at %s (continuing without it).", prof_path)
+            logger.warning(
+                "Profile-face cascade not found at %s (continuing without it).",
+                prof_path,
+            )
             profile = None
 
     return frontal, profile
+
 
 def detect_faces(gray, frontal, profile, scale_factor, min_neighbors, min_size):
     faces = frontal.detectMultiScale(
@@ -112,10 +126,12 @@ def detect_faces(gray, frontal, profile, scale_factor, min_neighbors, min_size):
 
     return faces
 
+
 def annotate(frame, faces, color=(0, 255, 0), thickness=2):
-    for (x, y, w, h) in faces:
+    for x, y, w, h in faces:
         cv2.rectangle(frame, (x, y), (x + w, y + h), color, thickness)
     return frame
+
 
 # ---------- Health Check ----------
 def health_check(src):
@@ -123,31 +139,84 @@ def health_check(src):
     if cap is None:
         logger.error("Health check failed: cannot open source %s", src)
         return 1
+
     ok, frame = cap.read()
     cap.release()
     if not ok or frame is None:
         logger.error("Health check failed: cannot read a frame")
         return 2
+
     logger.info("Health check OK")
     return 0
 
+
 # ---------- Main Loop ----------
-def main():
+def parse_args():
+    """Split parsing out of main to reduce complexity (flake8 C901)."""
     p = argparse.ArgumentParser("RTSP/WEBCAM Face Inference")
-    p.add_argument("--rtsp-url", type=str, default="0", help="RTSP URL or webcam index (e.g., 0)")
-    p.add_argument("--save-interval", type=float, default=5.0, help="Seconds between saving annotated frames")
-    p.add_argument("--max-frames", type=int, default=0, help="Stop after N frames (0 = run forever)")
-    p.add_argument("--health-check", action="store_true", help="Run health check and exit")
+
+    p.add_argument(
+        "--rtsp-url",
+        type=str,
+        default="0",
+        help="RTSP URL or webcam index (e.g., 0)",
+    )
+    p.add_argument(
+        "--save-interval",
+        type=float,
+        default=5.0,
+        help="Seconds between saving annotated frames",
+    )
+    p.add_argument(
+        "--max-frames",
+        type=int,
+        default=0,
+        help="Stop after N frames (0 = run forever)",
+    )
+    p.add_argument(
+        "--health-check",
+        action="store_true",
+        help="Run health check and exit",
+    )
 
     # Robustness in low light / distance
-    p.add_argument("--scale-factor", type=float, default=1.05, help="Haar scaleFactor (lower finds more)")
-    p.add_argument("--min-neighbors", type=int, default=3, help="Haar minNeighbors (lower finds more, more FP)")
-    p.add_argument("--min-size", type=int, default=20, help="Minimum face size (pixels)")
+    p.add_argument(
+        "--scale-factor",
+        type=float,
+        default=1.05,
+        help="Haar scaleFactor (lower finds more)",
+    )
+    p.add_argument(
+        "--min-neighbors",
+        type=int,
+        default=3,
+        help="Haar minNeighbors (lower finds more, more FP)",
+    )
+    p.add_argument(
+        "--min-size",
+        type=int,
+        default=20,
+        help="Minimum face size (pixels)",
+    )
 
     # Preprocessing knobs
-    p.add_argument("--brighten-alpha", type=float, default=1.6, help="Contrast gain (1.0 = no change)")
-    p.add_argument("--brighten-beta", type=int, default=35, help="Brightness offset (0 = no change)")
-    p.add_argument("--clahe", action="store_true", help="Use CLAHE (strong local contrast boost)")
+    p.add_argument(
+        "--brighten-alpha",
+        type=float,
+        default=1.6,
+        help="Contrast gain (1.0 = no change)",
+    )
+    p.add_argument(
+        "--brighten-beta",
+        type=int,
+        default=35,
+        help="Brightness offset (0 = no change)",
+    )
+    p.add_argument(
+        "--clahe",
+        action="store_true",
+        help="Use CLAHE (strong local contrast boost)",
+    )
 
     # Video properties (optional)
     p.add_argument("--width", type=int, default=0, help="Capture width (0 = default)")
@@ -155,13 +224,19 @@ def main():
     p.add_argument("--fps", type=int, default=0, help="Capture FPS (0 = default)")
 
     # Extra detector
-    p.add_argument("--use-profile", action="store_true", help="Also use profile-face cascade (side faces)")
+    p.add_argument(
+        "--use-profile",
+        action="store_true",
+        help="Also use profile-face cascade (side faces)",
+    )
 
-    args = p.parse_args()
+    return p.parse_args()
 
+
+def run_loop(args):
+    """Main run loop split out to keep main() simple (helps C901)."""
     # argparse stores "--rtsp-url" as rtsp_url (underscore). Normalize:
     src = getattr(args, "rtsp_url", "0")
-    # If it's a digit string, cast to int for webcam index
     src_cast = int(src) if isinstance(src, str) and src.isdigit() else src
 
     if args.health_check:
@@ -171,7 +246,12 @@ def main():
     if frontal is None:
         return 3
 
-    cap = open_capture(src_cast, width=args.width or None, height=args.height or None, fps=args.fps or None)
+    cap = open_capture(
+        src_cast,
+        width=args.width or None,
+        height=args.height or None,
+        fps=args.fps or None,
+    )
     if cap is None:
         logger.error("Failed to open source: %s", src)
         return 4
@@ -213,7 +293,6 @@ def main():
             frames += 1
             fps_counter += 1
 
-            # Simple FPS calc
             now = time.time()
             if now - t_fps >= 1.0:
                 logger.info("FPS=%.2f", fps_counter / (now - t_fps))
@@ -227,7 +306,6 @@ def main():
                 infer_ms,
             )
 
-            # Save annotated frames at interval
             if now - last_save >= args.save_interval:
                 ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
                 out_path = OUT_DIR / f"frame_{ts}.jpg"
@@ -239,13 +317,18 @@ def main():
             if args.max_frames > 0 and frames >= args.max_frames:
                 logger.info("Reached max_frames=%d, exiting.", args.max_frames)
                 break
-
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
     finally:
         cap.release()
 
     return 0
+
+
+def main():
+    args = parse_args()
+    return run_loop(args)
+
 
 if __name__ == "__main__":
     sys.exit(main())
