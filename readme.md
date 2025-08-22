@@ -140,5 +140,5 @@ docker pull piyushsharma96/rtsp-ai-inference:latest
 
 ---
 
-✍️ Maintainer: **Piyush Sharma (Bhaiyaji)**
+✍️ Maintainer: **Piyush P Sharma**
 
