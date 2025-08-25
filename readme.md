@@ -74,16 +74,6 @@ docker pull piyushsharma96/rtsp-ai-inference:latest
 docker run --rm piyushsharma96/rtsp-ai-inference:latest python app.py --health-check
 ```
 
-### 5️⃣ Run with Docker Compose
-```bash
-docker compose up --build
-```
-
-### 6️⃣ Health Check (Manual)
-```bash
-python app.py --health-check --rtsp-url 0
-```
-
 ---
 
 ## ⚡ CI/CD with GitHub Actions
